@@ -13,15 +13,10 @@ import { Separator } from "@/components/ui/separator"
 import { Checkbox } from "@/components/ui/checkbox"
 
 interface RefreshStatus {
-  status: 'idle' | 'running' | 'completed' | 'failed'
-  details: {
-    [key: string]: {
-      status: string
-      details?: any
-      error?: string
-    }
+  [key: string]: {
+    status: string
+    last_update: string | null
   }
-  last_updated?: string
 }
 
 export function RefreshPopover() {
@@ -39,20 +34,25 @@ export function RefreshPopover() {
       const status = await checkStatus()
       setRefreshStatus(status)
 
-      // Stop polling if status is idle, completed or failed
-      if (status.status === 'idle' || status.status === 'completed' || status.status === 'failed') {
+      // Check if all selected items are completed or failed
+      const allFinished = selectedItems.every(item => {
+        const itemStatus = status[item]?.status
+        return itemStatus === 'completed' || itemStatus === 'failed'
+      })
+
+      if (allFinished) {
         clearInterval(interval)
         setPollInterval(null)
         
-        if (status.status === 'completed' || status.status === 'failed') {
-          toast({
-            title: status.status === 'completed' ? "Refresh Completed" : "Refresh Failed",
-            description: status.status === 'completed' 
-              ? "All data has been successfully updated."
-              : "There was an error refreshing the data. Please try again.",
-            variant: status.status === 'completed' ? "default" : "destructive",
-          })
-        }
+        // Show toast for overall status
+        const anyFailed = selectedItems.some(item => status[item]?.status === 'failed')
+        toast({
+          title: anyFailed ? "Refresh Failed" : "Refresh Completed",
+          description: anyFailed 
+            ? "Some items failed to refresh. Please try again."
+            : "All selected items have been successfully updated.",
+          variant: anyFailed ? "destructive" : "default",
+        })
       }
     }, 2000)
     
@@ -75,20 +75,23 @@ export function RefreshPopover() {
     }
 
     try {
-      const refreshPromises = selectedItems.map(item => {
+      // Order the selected items in the desired sequence
+      const orderedItems = ['dgs', 'applications', 'hosts', 'synthetics'].filter(item => 
+        selectedItems.includes(item)
+      )
+
+      const refreshPromises = orderedItems.map(item => {
         switch(item) {
-          case 'hosts':
-            return fetch('http://localhost:8000/refresh/hosts', { method: 'POST' })
+          case 'dgs':
+            return fetch('http://localhost:8000/refresh/dgs', { method: 'POST' })
           case 'applications':
             return fetch('http://localhost:8000/refresh/applications', { method: 'POST' })
+          case 'hosts':
+            return fetch('http://localhost:8000/refresh/hosts', { method: 'POST' })
           case 'synthetics':
             return fetch('http://localhost:8000/refresh/synthetics', { method: 'POST' })
           case 'platform-extensions':
             return fetch('http://localhost:8000/refresh/platform-extensions', { method: 'POST' })
-          case 'dgs':
-            return fetch('http://localhost:8000/refresh/dgs', { method: 'POST' })
-          case 'host-dg-links':
-            return fetch('http://localhost:8000/refresh/topology-enrichment', { method: 'POST' })
           default:
             return Promise.reject(new Error(`Unknown endpoint: ${item}`))
         }
@@ -148,18 +151,7 @@ export function RefreshPopover() {
                   onCheckedChange={() => toggleItem('dgs')}
                 />
                 <label htmlFor="dgs" className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                  DGs {getStatusIcon(refreshStatus?.details?.dgs?.status)}
-                </label>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="host-dg-links"
-                  checked={selectedItems.includes('host-dg-links')}
-                  onCheckedChange={() => toggleItem('host-dg-links')}
-                />
-                <label htmlFor="host-dg-links" className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                  Topology Enrichment {getStatusIcon(refreshStatus?.details?.topology_enrichment?.status)}
+                  DGs {getStatusIcon(refreshStatus?.dgs?.status)}
                 </label>
               </div>
             </div>
@@ -169,23 +161,23 @@ export function RefreshPopover() {
             <div className="space-y-3">
               <div className="flex items-center space-x-2">
                 <Checkbox 
-                  id="hosts"
-                  checked={selectedItems.includes('hosts')}
-                  onCheckedChange={() => toggleItem('hosts')}
-                />
-                <label htmlFor="hosts" className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                  Hosts {getStatusIcon(refreshStatus?.details?.hosts?.status)}
-                </label>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox 
                   id="applications"
                   checked={selectedItems.includes('applications')}
                   onCheckedChange={() => toggleItem('applications')}
                 />
                 <label htmlFor="applications" className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                  Applications {getStatusIcon(refreshStatus?.details?.applications?.status)}
+                  Applications {getStatusIcon(refreshStatus?.applications?.status)}
+                </label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="hosts"
+                  checked={selectedItems.includes('hosts')}
+                  onCheckedChange={() => toggleItem('hosts')}
+                />
+                <label htmlFor="hosts" className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                  Hosts {getStatusIcon(refreshStatus?.hosts?.status)}
                 </label>
               </div>
 
@@ -196,7 +188,7 @@ export function RefreshPopover() {
                   onCheckedChange={() => toggleItem('synthetics')}
                 />
                 <label htmlFor="synthetics" className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                  Synthetics {getStatusIcon(refreshStatus?.details?.synthetics?.status)}
+                  Synthetics {getStatusIcon(refreshStatus?.synthetics?.status)}
                 </label>
               </div>
 
@@ -208,7 +200,7 @@ export function RefreshPopover() {
                   disabled={true}
                 />
                 <label htmlFor="platform-extensions" className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                  Platform Extensions (DDUs) {getStatusIcon(refreshStatus?.details?.platform_extensions?.status)}
+                  Platform Extensions (Former DDUs) {getStatusIcon(refreshStatus?.platform_extensions?.status)}
                 </label>
               </div>
             </div>
@@ -228,9 +220,9 @@ export function RefreshPopover() {
               'Refresh Selected'
             )}
           </Button>
-          {refreshStatus?.last_updated && (
+          {refreshStatus?.dgs?.last_update && (
             <div className="text-xs text-muted-foreground">
-              Last updated: {new Date(refreshStatus.last_updated).toLocaleString()}
+              Last updated: {new Date(refreshStatus.dgs.last_update).toLocaleString()}
             </div>
           )}
         </div>
