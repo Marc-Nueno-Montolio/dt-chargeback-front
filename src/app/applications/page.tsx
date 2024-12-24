@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Table,
   TableBody,
@@ -59,6 +59,7 @@ const FilterSection = ({ title, items, selected, setSelected }: {
   const [isOpen, setIsOpen] = useState(false)
   const [search, setSearch] = useState('')
   const selectedCount = selected.size
+  const checkboxRef = useRef<HTMLInputElement>(null)
 
   const normalizeValue = (value: string | null | undefined): string => {
     return value === null || value === undefined || value === '' ? 'N/A' : value
@@ -89,6 +90,12 @@ const FilterSection = ({ title, items, selected, setSelected }: {
 
   const isAllSelected = displayItems.length > 0 && selected.size === items.size
   const isIndeterminate = selected.size > 0 && selected.size < items.size
+
+  useEffect(() => {
+    if (checkboxRef.current) {
+      checkboxRef.current.indeterminate = isIndeterminate
+    }
+  }, [isIndeterminate])
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
@@ -131,11 +138,7 @@ const FilterSection = ({ title, items, selected, setSelected }: {
                 id={`${title}-select-all`}
                 checked={isAllSelected}
                 onCheckedChange={handleSelectAll}
-                ref={(ref) => {
-                  if (ref) {
-                    ref.indeterminate = isIndeterminate
-                  }
-                }}
+                ref={checkboxRef as unknown as React.Ref<HTMLButtonElement>}
               />
               <label 
                 htmlFor={`${title}-select-all`} 

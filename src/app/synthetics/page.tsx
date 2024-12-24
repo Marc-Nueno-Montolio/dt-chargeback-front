@@ -240,9 +240,9 @@ export default function SyntheticsPage() {
                   id={`${title}-select-all`}
                   checked={isAllSelected}
                   onCheckedChange={handleSelectAll}
-                  ref={(ref) => {
+                  ref={(ref: any) => {
                     if (ref) {
-                      ref.indeterminate = isIndeterminate
+                      (ref as HTMLInputElement).indeterminate = isIndeterminate
                     }
                   }}
                 />

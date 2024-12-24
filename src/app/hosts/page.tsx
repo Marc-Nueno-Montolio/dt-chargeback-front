@@ -248,7 +248,7 @@ export default function HostsPage() {
                   onCheckedChange={handleSelectAll}
                   ref={(ref) => {
                     if (ref) {
-                      ref.indeterminate = isIndeterminate
+                      (ref as unknown as HTMLInputElement).indeterminate = isIndeterminate
                     }
                   }}
                 />
