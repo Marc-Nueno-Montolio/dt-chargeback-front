@@ -32,9 +32,7 @@ const menuItems = [
   { name: "Hosts", icon: Server, href: "/hosts" },
   { name: "Applications", icon: AppWindow, href: "/applications" },
   { name: "Synthetics", icon: Activity, href: "/synthetics" },
-  { name: "Platform Extensions", icon: Puzzle, href: "/extensions" },
-  { name: "Rate Card", icon: CreditCard, href: "/rate-card" },
-  { name: "Settings", icon: Settings, href: "/settings" },
+
 ]
 
 export function Sidebar() {

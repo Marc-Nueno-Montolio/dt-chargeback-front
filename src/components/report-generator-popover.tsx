@@ -17,7 +17,8 @@ import {
 } from "@/components/ui/select"
 import { Play, Loader2 } from "lucide-react"
 import { DateRange } from "react-day-picker"
-import { format } from "date-fns"
+import { format, subDays } from "date-fns"
+import { useToast } from "@/hooks/use-toast"
 
 interface DG {
   id: number;
@@ -31,11 +32,69 @@ interface ReportGeneratorPopoverProps {
 }
 
 export function ReportGeneratorPopover({ isOpen, onOpenChange }: ReportGeneratorPopoverProps) {
-  const [date, setDate] = useState<DateRange | undefined>()
+  const today = new Date()
+  const thirtyDaysAgo = subDays(today, 30)
+  const [date, setDate] = useState<DateRange | undefined>({
+    from: thirtyDaysAgo,
+    to: today
+  })
   const [reportName, setReportName] = useState<string>("")
-  const [selectedDG, setSelectedDG] = useState<string>("all")
+  const [selectedDGs, setSelectedDGs] = useState<string[]>([])
   const [isRunning, setIsRunning] = useState(false)
   const [dgs, setDgs] = useState<DG[]>([])
+  const { toast } = useToast()
+
+  // Check status regularly when running
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+
+    const checkStatus = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/status')
+        const data = await response.json()
+        
+        if (data.status === 'processing') {
+          setIsRunning(true)
+        } else {
+          // Any status other than processing, stop checking
+          setIsRunning(false)
+          clearInterval(intervalId)
+
+          // Handle different status cases
+          if (data.status === 'idle') {
+            toast({
+              title: "Report Generation Complete",
+              description: "Your report has been generated successfully.",
+            })
+          } else {
+            // Any other status is treated as an error
+            toast({
+              title: "Report Generation Failed",
+              description: `Unexpected status: ${data.status}`,
+              variant: "destructive"
+            })
+          }
+        }
+      } catch (error) {
+        console.error("Error checking status:", error)
+        setIsRunning(false)
+        clearInterval(intervalId)
+        toast({
+          title: "Status Check Failed",
+          description: "Failed to check report generation status.",
+          variant: "destructive"
+        })
+      }
+    }
+
+    if (isRunning) {
+      // Check immediately on mount
+      checkStatus()
+      // Then check every 2 seconds
+      intervalId = setInterval(checkStatus, 2000)
+      return () => clearInterval(intervalId)
+    }
+  }, [isRunning, toast])
 
   useEffect(() => {
     const fetchDGs = async () => {
@@ -54,37 +113,13 @@ export function ReportGeneratorPopover({ isOpen, onOpenChange }: ReportGenerator
     fetchDGs()
   }, [])
 
-  useEffect(() => {
-    let intervalId: NodeJS.Timeout;
-
-    if (isRunning) {
-      intervalId = setInterval(async () => {
-        try {
-          const response = await fetch('http://localhost:8000/status')
-          const data = await response.json()
-          
-          if (data.status === 'idle') {
-            setIsRunning(false)
-            clearInterval(intervalId)
-          }
-        } catch (error) {
-          console.error("Error checking report status:", error)
-          setIsRunning(false)
-          clearInterval(intervalId)
-        }
-      }, 2000)
-    }
-
-    return () => {
-      if (intervalId) {
-        clearInterval(intervalId)
-      }
-    }
-  }, [isRunning])
-
   const handleRunReport = async () => {
-    if (!date?.from || !date?.to || !reportName.trim()) {
-      alert("Please select dates and enter a report name")
+    if (!date?.from || !date?.to || !reportName.trim() || selectedDGs.length === 0) {
+      toast({
+        title: "Missing Information",
+        description: "Please select dates, enter a report name, and select at least one DG",
+        variant: "destructive"
+      })
       return
     }
     
@@ -101,7 +136,7 @@ export function ReportGeneratorPopover({ isOpen, onOpenChange }: ReportGenerator
           name: reportName,
           from_date: date.from.toISOString(),
           to_date: date.to.toISOString(),
-          dg_ids: selectedDG === 'all' ? dgs.map(dg => dg.id) : [parseInt(selectedDG)],
+          dg_ids: selectedDGs.map(id => parseInt(id)),
           report_format: "json"
         })
       })
@@ -109,9 +144,38 @@ export function ReportGeneratorPopover({ isOpen, onOpenChange }: ReportGenerator
       if (!response.ok) {
         throw new Error('Failed to generate report')
       }
+
+      toast({
+        title: "Report Generation Started",
+        description: "Your report is being generated...",
+      })
+
     } catch (error) {
       console.error("Error running report:", error)
       setIsRunning(false)
+      toast({
+        title: "Generation Failed",
+        description: "Failed to start report generation.",
+        variant: "destructive"
+      })
+    }
+  }
+
+  const handleDGSelection = (value: string) => {
+    if (value === 'all') {
+      // Toggle between all DGs selected and none selected
+      if (selectedDGs.length === dgs.length) {
+        setSelectedDGs([])
+      } else {
+        setSelectedDGs(dgs.map(dg => dg.id.toString()))
+      }
+      return
+    }
+    
+    if (selectedDGs.includes(value)) {
+      setSelectedDGs(selectedDGs.filter(dg => dg !== value))
+    } else {
+      setSelectedDGs([...selectedDGs, value])
     }
   }
 
@@ -138,20 +202,31 @@ export function ReportGeneratorPopover({ isOpen, onOpenChange }: ReportGenerator
             />
           </div>
           <div className="space-y-2">
-            <Label>DG Selection</Label>
-            <Select value={selectedDG} onValueChange={setSelectedDG}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select DG" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All DGs</SelectItem>
-                {dgs.map(dg => (
-                  <SelectItem key={dg.id} value={dg.id.toString()}>
-                    {dg.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label>DG Selection ({selectedDGs.length} selected)</Label>
+            <div className="border rounded-md p-2 max-h-[200px] overflow-y-auto space-y-2">
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="all"
+                  checked={selectedDGs.length === dgs.length}
+                  onChange={() => handleDGSelection('all')}
+                  className="rounded border-gray-300"
+                />
+                <label htmlFor="all">Select All</label>
+              </div>
+              {dgs.map(dg => (
+                <div key={dg.id} className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id={dg.id.toString()}
+                    checked={selectedDGs.includes(dg.id.toString())}
+                    onChange={() => handleDGSelection(dg.id.toString())}
+                    className="rounded border-gray-300"
+                  />
+                  <label htmlFor={dg.id.toString()}>{dg.name}</label>
+                </div>
+              ))}
+            </div>
           </div>
           <div className="space-y-2">
             <Label>Date Range</Label>
@@ -183,7 +258,7 @@ export function ReportGeneratorPopover({ isOpen, onOpenChange }: ReportGenerator
             </div>
             <Button 
               onClick={handleRunReport}
-              disabled={isRunning || !date?.from || !date?.to || !reportName.trim()}
+              disabled={isRunning || !date?.from || !date?.to || !reportName.trim() || selectedDGs.length === 0}
             >
               {isRunning ? "Running..." : "Run"}
             </Button>

@@ -246,7 +246,7 @@ export default function HostsPage() {
                   id={`${title}-select-all`}
                   checked={isAllSelected}
                   onCheckedChange={handleSelectAll}
-                  ref={(ref) => {
+                    ref={(ref) => {
                     if (ref) {
                       (ref as unknown as HTMLInputElement).indeterminate = isIndeterminate
                     }
